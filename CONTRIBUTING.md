@@ -9,15 +9,15 @@ feature request. Tag the issue accordingly.
 
 ### Hack on wiki
 
-1. Install as usual (`go get github.com/walle/pgmigrate`)
+1. Install as usual (`go get github.com/walle/pgm`)
 2. Write code and tests for your new feature
 3. Ensure everything works and the tests pass (see below)
 4. Consider contributing your code upstream
 
 ### Contribute upstream
 
-1. Fork pgmigrate on GitHub
-2. Add your fork (`git remote add fork git@github.com:myuser/pgmigrate.git`)
+1. Fork pgm on GitHub
+2. Add your fork (`git remote add fork git@github.com:myuser/pgm.git`)
 3. Checkout your fork (`git checkout -t fork/master`)
 4. Create your feature branch (`git checkout -b my-new-feature`)
 5. Write code and tests for your new feature
