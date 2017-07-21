@@ -14,12 +14,12 @@ import (
 
 const (
 	migrationsTableExists = `SELECT EXISTS (SELECT 1 FROM information_schema.tables 
-		WHERE table_name = 'pgmigrate')`
-	createMigrationsTable = `CREATE TABLE pgmigrate(id SERIAL, migration TEXT, 
+		WHERE table_name = 'pgm')`
+	createMigrationsTable = `CREATE TABLE pgm(id SERIAL, migration TEXT, 
 		created_at TIMESTAMP DEFAULT now());`
-	latestMigration = `SELECT migration FROM pgmigrate ORDER BY migration DESC`
-	addMigration    = `INSERT INTO pgmigrate(migration) VALUES($1)`
-	removeMigration = `DELETE FROM pgmigrate WHERE migration=$1`
+	latestMigration = `SELECT migration FROM pgm ORDER BY migration DESC`
+	addMigration    = `INSERT INTO pgm(migration) VALUES($1)`
+	removeMigration = `DELETE FROM pgm WHERE migration=$1`
 )
 
 const (
@@ -64,7 +64,7 @@ func validateInput() {
 	flag.Parse()
 
 	if len(flag.Args()) != 1 {
-		fmt.Fprintln(os.Stderr, "usage: pgmigrate [OPTIONS] COMMAND")
+		fmt.Fprintln(os.Stderr, "usage: pgm [OPTIONS] COMMAND")
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
