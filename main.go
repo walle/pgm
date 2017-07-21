@@ -27,9 +27,36 @@ const (
 	downCommand = "down"
 )
 
+var (
+	dsn string
+	dir string
+	cmd string
+)
+
 func main() {
-	var dsn string
-	var dir string
+	validateInput()
+
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "could not connect to database: %s\n", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	validateDB(db)
+
+	lastMigration := getLastMigration(db)
+
+	if cmd == downCommand {
+		down(db, dir, lastMigration)
+		os.Exit(0)
+	}
+
+	up(db, dir, lastMigration)
+	os.Exit(0)
+}
+
+func validateInput() {
 	flag.StringVar(&dsn, "dsn",
 		"postgres://postgres:@localhost/postgres?sslmode=disable",
 		"The DSN to use to connect to the database")
@@ -42,7 +69,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	cmd := flag.Args()[0]
+	cmd = flag.Args()[0]
 	if cmd != upCommand && cmd != downCommand {
 		fmt.Fprintf(os.Stderr, "valid commands are '%s' and '%s'\n", upCommand, downCommand)
 		os.Exit(1)
@@ -52,14 +79,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%s does not exist or isn't a directory: %s\n", dir, err)
 		os.Exit(1)
 	}
+}
 
-	db, err := sql.Open("postgres", dsn)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "could not connect to database: %s\n", err)
-		os.Exit(1)
-	}
-	defer db.Close()
-	err = db.Ping()
+func validateDB(db *sql.DB) {
+	err := db.Ping()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "could not ping database: %s\n", err)
 		os.Exit(1)
@@ -79,21 +102,16 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
 
+func getLastMigration(db *sql.DB) string {
 	var lastMigration string
-	err = db.QueryRow(latestMigration).Scan(&lastMigration)
+	err := db.QueryRow(latestMigration).Scan(&lastMigration)
 	if err != nil && err != sql.ErrNoRows {
 		fmt.Fprintf(os.Stderr, "error querying the database: %s\n", err)
 		os.Exit(1)
 	}
-
-	if cmd == downCommand {
-		down(db, dir, lastMigration)
-		os.Exit(0)
-	}
-
-	up(db, dir, lastMigration)
-	os.Exit(0)
+	return lastMigration
 }
 
 func up(db *sql.DB, dir, lastMigration string) {
