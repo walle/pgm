@@ -87,51 +87,32 @@ func main() {
 		os.Exit(1)
 	}
 
-	if cmd == upCommand {
-		migrations := make([]string, 0)
-		files, err := ioutil.ReadDir(dir)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error reading the migrations: %s\n", err)
-			os.Exit(1)
-		}
-		for _, f := range files {
-			n := f.Name()
-			if strings.Contains(n, "up.sql") {
-				if strings.TrimSuffix(n, ".up.sql") > lastMigration {
-					migrations = append(migrations, n)
-				}
+	if cmd == downCommand {
+		down(db, dir, lastMigration)
+		os.Exit(0)
+	}
+
+	up(db, dir, lastMigration)
+	os.Exit(0)
+}
+
+func up(db *sql.DB, dir, lastMigration string) {
+	migrations := make([]string, 0)
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error reading the migrations: %s\n", err)
+		os.Exit(1)
+	}
+	for _, f := range files {
+		n := f.Name()
+		if strings.Contains(n, "up.sql") {
+			if strings.TrimSuffix(n, ".up.sql") > lastMigration {
+				migrations = append(migrations, n)
 			}
 		}
-		for _, m := range migrations {
-			fq, err := ioutil.ReadFile(filepath.Join(dir, m))
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "error reading the migration: %s\n", err)
-				os.Exit(1)
-			}
-			_, err = db.Exec(string(fq))
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "error querying the database: %s\n", err)
-				os.Exit(1)
-			}
-			mn := strings.TrimSuffix(m, ".up.sql")
-			_, err = db.Exec(string(addMigration), mn)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "error saving migration metadata: %s\n", err)
-				fmt.Fprintln(os.Stderr, "[WARNING] database in inconsistent state")
-				os.Exit(1)
-			}
-		}
-		fmt.Fprintf(os.Stdout, "Applied %d migrations\n", len(migrations))
-	} else if cmd == downCommand {
-		if lastMigration == "" {
-			os.Exit(0)
-		}
-		fn := filepath.Join(dir, lastMigration+".down.sql")
-		if _, err := os.Stat(fn); err != nil {
-			fmt.Fprintf(os.Stderr, "%s does not exist: %s\n", fn, err)
-			os.Exit(1)
-		}
-		fq, err := ioutil.ReadFile(fn)
+	}
+	for _, m := range migrations {
+		fq, err := ioutil.ReadFile(filepath.Join(dir, m))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error reading the migration: %s\n", err)
 			os.Exit(1)
@@ -141,13 +122,41 @@ func main() {
 			fmt.Fprintf(os.Stderr, "error querying the database: %s\n", err)
 			os.Exit(1)
 		}
-		_, err = db.Exec(string(removeMigration), lastMigration)
+		mn := strings.TrimSuffix(m, ".up.sql")
+		_, err = db.Exec(string(addMigration), mn)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error querying the database: %s\n", err)
+			fmt.Fprintf(os.Stderr, "error saving migration metadata: %s\n", err)
 			fmt.Fprintln(os.Stderr, "[WARNING] database in inconsistent state")
 			os.Exit(1)
 		}
-		fmt.Fprintf(os.Stdout, "Migration %s successfully removed\n", lastMigration)
+	}
+	fmt.Fprintf(os.Stdout, "Applied %d migrations\n", len(migrations))
+}
+
+func down(db *sql.DB, dir, lastMigration string) {
+	if lastMigration == "" {
 		os.Exit(0)
 	}
+	fn := filepath.Join(dir, lastMigration+".down.sql")
+	if _, err := os.Stat(fn); err != nil {
+		fmt.Fprintf(os.Stderr, "%s does not exist: %s\n", fn, err)
+		os.Exit(1)
+	}
+	fq, err := ioutil.ReadFile(fn)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error reading the migration: %s\n", err)
+		os.Exit(1)
+	}
+	_, err = db.Exec(string(fq))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error querying the database: %s\n", err)
+		os.Exit(1)
+	}
+	_, err = db.Exec(string(removeMigration), lastMigration)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error querying the database: %s\n", err)
+		fmt.Fprintln(os.Stderr, "[WARNING] database in inconsistent state")
+		os.Exit(1)
+	}
+	fmt.Fprintf(os.Stdout, "Migration %s successfully removed\n", lastMigration)
 }
