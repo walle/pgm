@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -11,21 +12,42 @@ import (
 	_ "github.com/lib/pq"
 )
 
+const (
+	migrationsTableExists = `SELECT EXISTS (SELECT 1 FROM information_schema.tables 
+		WHERE table_name = 'pgmigrate')`
+	createMigrationsTable = `CREATE TABLE pgmigrate(id SERIAL, migration TEXT, 
+		created_at TIMESTAMP DEFAULT now());`
+	latestMigration = `SELECT migration FROM pgmigrate ORDER BY migration DESC`
+	addMigration    = `INSERT INTO pgmigrate(migration) VALUES($1)`
+	removeMigration = `DELETE FROM pgmigrate WHERE migration=$1`
+)
+
+const (
+	upCommand   = "up"
+	downCommand = "down"
+)
+
 func main() {
-	if len(os.Args) != 4 {
-		fmt.Fprintln(os.Stderr, "usage: pgmigrate DSN COMMAND DIRECTORY")
+	var dsn string
+	var dir string
+	flag.StringVar(&dsn, "dsn",
+		"postgres://postgres:@localhost/postgres?sslmode=disable",
+		"The DSN to use to connect to the database")
+	flag.StringVar(&dir, "dir", "sql", "The path to the directory of migration files")
+	flag.Parse()
+
+	if len(flag.Args()) != 1 {
+		fmt.Fprintln(os.Stderr, "usage: pgmigrate [OPTIONS] COMMAND")
+		flag.PrintDefaults()
 		os.Exit(1)
 	}
 
-	dsn := os.Args[1]
-
-	cmd := os.Args[2]
-	if cmd != "up" && cmd != "down" {
-		fmt.Fprintln(os.Stderr, "valid commands are 'up' and 'down'")
+	cmd := flag.Args()[0]
+	if cmd != upCommand && cmd != downCommand {
+		fmt.Fprintf(os.Stderr, "valid commands are '%s' and '%s'\n", upCommand, downCommand)
 		os.Exit(1)
 	}
 
-	dir := os.Args[3]
 	if stat, err := os.Stat(dir); err != nil || !stat.IsDir() {
 		fmt.Fprintf(os.Stderr, "%s does not exist or isn't a directory: %s\n", dir, err)
 		os.Exit(1)
@@ -44,32 +66,28 @@ func main() {
 	}
 
 	var exists bool
-	eq := `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'pgmigrate')`
-	err = db.QueryRow(eq).Scan(&exists)
+	err = db.QueryRow(migrationsTableExists).Scan(&exists)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error querying the database: %s\n", err)
 		os.Exit(1)
 	}
 
 	if !exists {
-		cq := `CREATE TABLE pgmigrate(id SERIAL, migration TEXT, 
-		created_at TIMESTAMP DEFAULT now());`
-		_, err = db.Exec(cq)
+		_, err = db.Exec(createMigrationsTable)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "could not create migrations table: %s\n", err)
 			os.Exit(1)
 		}
 	}
 
-	var latestMigration string
-	lmq := `SELECT migration FROM pgmigrate ORDER BY migration DESC`
-	err = db.QueryRow(lmq).Scan(&latestMigration)
+	var lastMigration string
+	err = db.QueryRow(latestMigration).Scan(&lastMigration)
 	if err != nil && err != sql.ErrNoRows {
 		fmt.Fprintf(os.Stderr, "error querying the database: %s\n", err)
 		os.Exit(1)
 	}
 
-	if cmd == "up" {
+	if cmd == upCommand {
 		migrations := make([]string, 0)
 		files, err := ioutil.ReadDir(dir)
 		if err != nil {
@@ -79,7 +97,7 @@ func main() {
 		for _, f := range files {
 			n := f.Name()
 			if strings.Contains(n, "up.sql") {
-				if strings.TrimSuffix(n, ".up.sql") > latestMigration {
+				if strings.TrimSuffix(n, ".up.sql") > lastMigration {
 					migrations = append(migrations, n)
 				}
 			}
@@ -96,19 +114,19 @@ func main() {
 				os.Exit(1)
 			}
 			mn := strings.TrimSuffix(m, ".up.sql")
-			cmq := `INSERT INTO pgmigrate(migration) VALUES($1)`
-			_, err = db.Exec(string(cmq), mn)
+			_, err = db.Exec(string(addMigration), mn)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error saving migration metadata: %s\n", err)
 				fmt.Fprintln(os.Stderr, "[WARNING] database in inconsistent state")
 				os.Exit(1)
 			}
 		}
-	} else if cmd == "down" {
-		if latestMigration == "" {
+		fmt.Fprintf(os.Stdout, "Applied %d migrations\n", len(migrations))
+	} else if cmd == downCommand {
+		if lastMigration == "" {
 			os.Exit(0)
 		}
-		fn := filepath.Join(dir, latestMigration+".down.sql")
+		fn := filepath.Join(dir, lastMigration+".down.sql")
 		if _, err := os.Stat(fn); err != nil {
 			fmt.Fprintf(os.Stderr, "%s does not exist: %s\n", fn, err)
 			os.Exit(1)
@@ -123,13 +141,13 @@ func main() {
 			fmt.Fprintf(os.Stderr, "error querying the database: %s\n", err)
 			os.Exit(1)
 		}
-		rmq := `DELETE FROM pgmigrate WHERE migration=$1`
-		_, err = db.Exec(string(rmq), latestMigration)
+		_, err = db.Exec(string(removeMigration), lastMigration)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error querying the database: %s\n", err)
 			fmt.Fprintln(os.Stderr, "[WARNING] database in inconsistent state")
 			os.Exit(1)
 		}
+		fmt.Fprintf(os.Stdout, "Migration %s successfully removed\n", lastMigration)
 		os.Exit(0)
 	}
 }
