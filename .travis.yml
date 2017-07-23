@@ -1,0 +1,23 @@
+sudo: required
+
+language: go
+go:
+  - 1.8
+
+services:
+  - docker
+
+env:
+  global:
+  - COMMIT=${TRAVIS_COMMIT::8}
+
+script:
+  - make test pgm
+  - export TAG=`if [ "$TRAVIS_BRANCH" == "master" ]; then echo "latest"; else echo $TRAVIS_BRANCH ; fi`
+  - VERSION=$COMMIT make image
+
+deploy:
+  - provider: script
+    script: make push
+    on:
+      branch: master
