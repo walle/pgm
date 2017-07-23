@@ -1,0 +1,17 @@
+version: '2'
+
+services:
+  db:
+    restart: always
+    image: postgres
+    ports:
+      - "5432:5432"
+  migrations: 
+    image: walle/pgm 
+    command: -dsn 'postgres://postgres:@db/postgres?sslmode=disable' up
+    volumes: 
+      - "./sql:/sql"
+    links:
+      - db
+    depends_on:
+      - db
